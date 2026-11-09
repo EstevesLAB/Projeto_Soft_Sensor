@@ -3,6 +3,8 @@
 README.md
 dados/01_brutos/dados_api_meteorologica_campinas_30dias_5min.csv
 dados/01_brutos/dados_sensores_estufa_30dias_5min.csv
+dados/01_brutos/leituras_202610221721.csv
+dados/01_brutos/leitura_climatica_202610221722.csv
 dados/02_intermediarios/dados_com_flags_qualidade.csv
 dados/02_intermediarios/dados_sincronizados.csv
 dados/03_processados/base_avaliacao_integrada.csv

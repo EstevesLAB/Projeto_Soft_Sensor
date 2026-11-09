@@ -10,8 +10,104 @@ def raiz_projeto(inicio=None):
 
 def carregar_csv(caminho):
     df=pd.read_csv(caminho,encoding='utf-8-sig')
-    df['timestamp']=pd.to_datetime(df['timestamp'],utc=True).dt.tz_convert('America/Sao_Paulo')
+    col=None
+    for nome in ['timestamp','tempo','datetime','data_hora','time']:
+        if nome in df.columns:
+            col=nome; break
+    if col is None:
+        raise KeyError(f'Arquivo sem coluna temporal conhecida: {list(df.columns[:10])}')
+    ts=pd.to_datetime(df[col],errors='coerce',utc=True)
+    if ts.dt.tz is None:
+        ts=pd.to_datetime(df[col],errors='coerce').dt.tz_localize('UTC')
+    df=df.copy()
+    df['timestamp']=ts.dt.tz_convert('America/Sao_Paulo')
     return df.sort_values('timestamp').reset_index(drop=True)
+
+
+def carregar_clima_open_meteo(caminho):
+    df=pd.read_csv(caminho,encoding='utf-8-sig')
+    if 'ts' not in df.columns:
+        raise KeyError(f'Arquivo climático sem coluna ts: {list(df.columns[:10])}')
+    df=df.copy()
+    df=df[df['fonte'].fillna('').str.contains('open-meteo',case=False,na=False)].copy()
+    df['timestamp']=pd.to_datetime(df['ts'], errors='coerce', utc=True).dt.tz_convert('America/Sao_Paulo')
+    df=df.dropna(subset=['timestamp']).drop_duplicates(subset='timestamp').sort_values('timestamp').reset_index(drop=True)
+    mapeamento={
+        'te_c':'temperatura_ambiente_C',
+        'i_wm2':'radiacao_solar_global_W_m2',
+        'vv_ms':'velocidade_vento_m_s',
+        'ure_pct':'umidade_relativa_ar_pct',
+        'tpo_c':'temperatura_ponto_orvalho_C',
+    }
+    return df.rename(columns=mapeamento)[['timestamp','temperatura_ambiente_C','radiacao_solar_global_W_m2','velocidade_vento_m_s','umidade_relativa_ar_pct','temperatura_ponto_orvalho_C']]
+
+
+def normalizar_csv_real(df):
+    x=df.copy()
+    if 'timestamp' not in x.columns:
+        raise KeyError('O DataFrame real precisa conter a coluna timestamp.')
+    x=x.dropna(subset=['timestamp']).sort_values('timestamp').reset_index(drop=True)
+    mapeamento={
+        'setor_127':'setor_127',
+        'temperatura_128':'temperatura_interna_C',
+        'umidade_relativa_129':'umidade_relativa_interna_pct',
+        'tensiometria_130':'tensiometria_130',
+        'ponto_orvalho_131':'ponto_orvalho_131',
+        'dpv_inst_132':'dpv_inst_132',
+        'radiacao_inst_133':'radiacao_inst_133',
+        'radiacao_acum_134':'radiacao_acum_134',
+        'rssi_d_169':'rssi_d_169',
+        'rssi_u_170':'rssi_u_170',
+        'umidade_relativa2_439':'umidade_relativa2_439',
+        'ponto_orvalho2_440':'ponto_orvalho2_440',
+        'dpv2_441':'dpv2_441',
+        'radiacao1_442':'radiacao1_442',
+        'radiacao2_443':'radiacao2_443',
+        'co2_444':'co2_444',
+        'setor_273':'setor_273',
+        'radiacao_acum_274':'radiacao_acum_274',
+        'radiacao_inst_275':'radiacao_inst_275',
+        'chuva_hora_370':'chuva_hora_370',
+        'chuva_dia_371':'chuva_dia_371',
+        'chuva_semana_372':'chuva_semana_372',
+    }
+    x=x.rename(columns=mapeamento)
+    return x
+
+
+def montar_dados_sincronizados(caminho_sensor, caminho_clima, colunas_sensor=None, tolerancia='15min'):
+    sensor_cols = colunas_sensor or [
+        'temperatura_interna_C',
+        'umidade_relativa_interna_pct',
+        'ponto_orvalho_131',
+        'radiacao_inst_133',
+        'radiacao_acum_134',
+        'rssi_d_169',
+        'rssi_u_170',
+        'umidade_relativa2_439',
+        'ponto_orvalho2_440',
+        'dpv2_441',
+        'co2_444',
+    ]
+    clima_cols = [
+        'temperatura_ambiente_C',
+        'umidade_relativa_ar_pct',
+        'radiacao_solar_global_W_m2',
+        'temperatura_ponto_orvalho_C',
+        'velocidade_vento_m_s',
+    ]
+
+    sens = normalizar_csv_real(carregar_csv(caminho_sensor)).sort_values('timestamp').reset_index(drop=True)
+    clima = carregar_clima_open_meteo(caminho_clima).sort_values('timestamp').reset_index(drop=True)
+    dados = pd.merge_asof(sens, clima, on='timestamp', direction='nearest', tolerance=pd.Timedelta(tolerancia))
+    mask = dados[sensor_cols].notna().any(axis=1)
+    dados = dados.loc[mask, sensor_cols + clima_cols + ['timestamp']].copy().reset_index(drop=True)
+
+    dados.insert(0, 'tempo', dados['timestamp'].dt.strftime('%Y-%m-%d %H:%M:%S%z'))
+    dados['tempo'] = dados['tempo'].str[:-2] + ':' + dados['tempo'].str[-2:]
+    dados['status_sincronizacao'] = 'sensor+clima' if dados[clima_cols].notna().any().any() else 'sensor_sem_clima'
+    return dados[['tempo'] + sensor_cols + clima_cols + ['timestamp', 'status_sincronizacao']]
+
 
 def resumo_temporal(df):
     d=df['timestamp'].diff().dt.total_seconds().div(60)

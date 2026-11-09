@@ -27,4 +27,8 @@ Instale as extensões **Python** e **Jupyter** da Microsoft, abra esta pasta no 
 
 ## Observação
 
-Os dados são sintéticos e incluem eventos marcados para fins didáticos. A coluna `evento_referencia` é a verdade de geração e não deve ser usada como entrada dos modelos.
+Os dados principais são sintéticos e incluem eventos marcados para fins didáticos. A coluna `evento_referencia` é a verdade de geração e não deve ser usada como entrada dos modelos.
+
+Também foram incluídos arquivos reais para validação:
+- `dados/01_brutos/leituras_202610221721.csv`: leituras reais do equipamento da estufa;
+- `dados/01_brutos/leitura_climatica_202610221722.csv`: registros meteorológicos da estação Open-Meteo, integrados ao fluxo de sincronização.
